@@ -1,5 +1,9 @@
-import 'package:firebase_auth/screens/login_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth_tut/models/user_model.dart';
+import 'package:firebase_auth_tut/screens/home_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 
 class RegistrationScreen extends StatefulWidget {
   const RegistrationScreen({Key? key}) : super(key: key);
@@ -9,6 +13,11 @@ class RegistrationScreen extends StatefulWidget {
 }
 
 class _RegistrationScreenState extends State<RegistrationScreen> {
+  final _auth = FirebaseAuth.instance;
+
+  // string for displaying the error Message
+  String? errorMessage;
+
   // form key
   final _formKey = GlobalKey<FormState>();
 
@@ -27,7 +36,16 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       autofocus: false,
       controller: _firstNameController,
       keyboardType: TextInputType.name,
-      // validator: () {},
+      validator: (value) {
+        RegExp regex = RegExp(r'^.{3,}$');
+        if (value!.isEmpty) {
+          return ("First Name cannot be Empty");
+        }
+        if (!regex.hasMatch(value)) {
+          return ("Enter Valid name(Min. 3 Character)");
+        }
+        return null;
+      },
       onSaved: (value) {
         _firstNameController.text = value!;
       },
@@ -47,7 +65,12 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       autofocus: false,
       controller: _lastNameController,
       keyboardType: TextInputType.name,
-      // validator: () {},
+      validator: (value) {
+        if (value!.isEmpty) {
+          return ("Last Name cannot be Empty");
+        }
+        return null;
+      },
       onSaved: (value) {
         _lastNameController.text = value!;
       },
@@ -67,7 +90,16 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       autofocus: false,
       controller: _emailController,
       keyboardType: TextInputType.emailAddress,
-      // validator: () {},
+      validator: (value) {
+        if (value!.isEmpty) {
+          return ("Please Enter Your Email");
+        }
+        // reg expression for email validation
+        if (!RegExp("^[a-zA-Z0-9+_.-]+@[a-zA-Z0-9.-]+.[a-z]").hasMatch(value)) {
+          return ("Please Enter a valid email");
+        }
+        return null;
+      },
       onSaved: (value) {
         _emailController.text = value!;
       },
@@ -87,7 +119,15 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       autofocus: false,
       controller: _passwordController,
       obscureText: true,
-      // validator: () {},
+      validator: (value) {
+        RegExp regex = RegExp(r'^.{6,}$');
+        if (value!.isEmpty) {
+          return ("Password is required for login");
+        }
+        if (!regex.hasMatch(value)) {
+          return ("Enter Valid Password(Min. 6 Character)");
+        }
+      },
       onSaved: (value) {
         _passwordController.text = value!;
       },
@@ -107,7 +147,12 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       autofocus: false,
       controller: _confirmPasswordController,
       obscureText: true,
-      // validator: () {},
+      validator: (value) {
+        if (_confirmPasswordController.text != _passwordController.text) {
+          return "Password don't match";
+        }
+        return null;
+      },
       onSaved: (value) {
         _confirmPasswordController.text = value!;
       },
@@ -130,7 +175,9 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         child: MaterialButton(
           padding: const EdgeInsets.fromLTRB(20, 15, 20, 15),
           minWidth: MediaQuery.of(context).size.width,
-          onPressed: () {},
+          onPressed: () {
+            signUp(_emailController.text, _passwordController.text);
+          },
           child: const Text(
             "SignUp",
             textAlign: TextAlign.center,
@@ -187,6 +234,73 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         ),
       ),
     );
-    ;
+  }
+
+  void signUp(String email, String password) async {
+    if (_formKey.currentState!.validate()) {
+      try {
+        await _auth
+            .createUserWithEmailAndPassword(email: email, password: password)
+            .then((value) => {
+                  postDetailsToFirestore(value),
+                })
+            .catchError((e) {
+          Fluttertoast.showToast(msg: e!.message);
+        });
+      } on FirebaseAuthException catch (error) {
+        switch (error.code) {
+          case "invalid-email":
+            errorMessage = "Your email address appears to be malformed.";
+            break;
+          case "wrong-password":
+            errorMessage = "Your password is wrong.";
+            break;
+          case "user-not-found":
+            errorMessage = "User with this email doesn't exist.";
+            break;
+          case "user-disabled":
+            errorMessage = "User with this email has been disabled.";
+            break;
+          case "too-many-requests":
+            errorMessage = "Too many requests";
+            break;
+          case "operation-not-allowed":
+            errorMessage = "Signing in with Email and Password is not enabled.";
+            break;
+          default:
+            errorMessage = "An undefined Error happened.";
+        }
+        Fluttertoast.showToast(msg: errorMessage!);
+        print(error.code);
+      }
+    }
+  }
+
+  postDetailsToFirestore(UserCredential userCredential) async {
+    // calling our firestore
+    // calling our user model
+    // sedning these values
+
+    FirebaseFirestore firebaseFirestore = FirebaseFirestore.instance;
+    User? user = userCredential.user;
+    print(user);
+    UserModel userModel = UserModel(
+      uid: user!.uid,
+      email: user.email as String,
+      firstName: _firstNameController.text,
+      lastName: _lastNameController.text,
+    );
+
+    await firebaseFirestore
+        .collection("users")
+        .doc(user.uid)
+        .set(userModel.toMap());
+    Fluttertoast.showToast(msg: "Account created successfully :) ");
+
+    Navigator.pushAndRemoveUntil(
+      (context),
+      MaterialPageRoute(builder: (context) => const HomeScreen()),
+      (route) => false,
+    );
   }
 }
